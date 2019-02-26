@@ -708,7 +708,7 @@ static void makect(int nc, int *ip, double *c)
 
 static void bitrv2(int n, int *ip0, double *a)
 {
-    int j, j1, k, k1, l, m, m2, ip[256];
+    int j, j1, k, k1, l, m, m2, ip[1024];
     double xr, xi, yr, yi;
     
     (void)ip0;
@@ -809,7 +809,7 @@ static void bitrv2(int n, int *ip0, double *a)
 
 static void bitrv2conj(int n, int *ip0, double *a)
 {
-    int j, j1, k, k1, l, m, m2, ip[256];
+    int j, j1, k, k1, l, m, m2, ip[1024];
     double xr, xi, yr, yi;
     
     (void)ip0;

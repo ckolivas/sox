@@ -534,7 +534,7 @@ static int create(sox_effect_t * effp, int argc, char **argv)
   p->coef_interp = quality = -1;
   p->rolloff = rolloff_small;
   p->phase = 50;
-  p->max_coefs_size = 400;
+  p->max_coefs_size = INT_MAX;
   p->shared_ptr = &p->shared;
 
   while ((c = lsx_getopt(&optstate)) != -1) switch (c) {
@@ -544,7 +544,7 @@ static int create(sox_effect_t * effp, int argc, char **argv)
     GETOPT_NUMERIC(optstate, 'B', bw_0dB_pc, 53, 99.5)
     GETOPT_NUMERIC(optstate, 'A', anti_aliasing_pc, 85, 100)
     GETOPT_NUMERIC(optstate, 'd', bit_depth, 15, 33)
-    GETOPT_LOCAL_NUMERIC(optstate, 'b', bw_3dB_pc, 74, 99.7)
+    GETOPT_LOCAL_NUMERIC(optstate, 'b', bw_3dB_pc, 74, 99.999)
     GETOPT_LOCAL_NUMERIC(optstate, 'R', rej, 90, 200)
     GETOPT_LOCAL_NUMERIC(optstate, 'Q', quality, 0, 7)
     case 'M': p->phase =  0; break;
