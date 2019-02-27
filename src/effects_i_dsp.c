@@ -148,7 +148,7 @@ double lsx_bessel_I_0(double x)
   return sum;
 }
 
-int lsx_set_dft_length(int num_taps) /* Set to 4 x nearest power of 2 */
+long long int lsx_set_dft_length(int num_taps) /* Set to 4 x nearest power of 2 */
 {      /* or half of that if danger of causing too many cache misses. */
   int min = sox_globals.log2_dft_min_size;
   double d = log((double)num_taps) / log(2.);
@@ -415,7 +415,7 @@ static double safe_log(double x)
   return -26;
 }
 
-void lsx_fir_to_phase(double * * h, int * len, int * post_len, double phase)
+void lsx_fir_to_phase(double * * h, long long int * len, int * post_len, double phase)
 {
   double * pi_wraps, * work, phase1 = (phase > 50 ? 100 - phase : phase) / 50;
   int i, work_len, begin, end, imp_peak = 0, peak = 0;

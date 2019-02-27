@@ -24,6 +24,7 @@
 #include "soxconfig.h"
 #include "sox.h"
 #include "util.h"
+#include "xmalloc.h"
 
 #include <ctype.h>
 #include <errno.h>
@@ -1243,7 +1244,7 @@ static char const * vu(unsigned channel)
 static char * headroom(void)
 {
   if (min_headroom < MIN_HEADROOM) {
-    static char buff[10];
+    static char buff[16];
     unsigned h = (unsigned)(min_headroom * 10);
     sprintf(buff, "Hd:%u.%u", h /10, h % 10);
     return buff;

@@ -93,9 +93,9 @@ typedef struct stage {
   /* Common to all stage types: */
   stage_fn_t fn;
   fifo_t     fifo;
-  int        pre;       /* Number of past samples to store */
-  int        pre_post;  /* pre + number of future samples to store */
-  int        preload;   /* Number of zero samples to pre-load the fifo */
+  size_t        pre;       /* Number of past samples to store */
+  size_t        pre_post;  /* pre + number of future samples to store */
+  size_t        preload;   /* Number of zero samples to pre-load the fifo */
   double     out_in_ratio; /* For buffer management. */
 
   /* For a stage with variable (run-time generated) filter coefs: */
@@ -124,7 +124,7 @@ typedef struct stage {
 
 static void cubic_stage_fn(stage_t * p, fifo_t * output_fifo)
 {
-  int i, num_in = stage_occupancy(p), max_num_out = 1 + num_in*p->out_in_ratio;
+  size_t i, num_in = stage_occupancy(p), max_num_out = 1 + num_in*p->out_in_ratio;
   sample_t const * input = stage_read_p(p);
   sample_t * output = fifo_reserve(output_fifo, max_num_out);
 
@@ -220,7 +220,7 @@ static void dft_stage_init(
   dft_filter_t * f = &stage->shared->dft_filter[instance];
   
   if (!f->num_taps) {
-    int num_taps = 0, dft_length, i;
+    long long int num_taps = 0, dft_length, i;
     int k = phase == 50 && lsx_is_power_of_2(L) && Fn == L? L << 1 : 4;
     double * h = lsx_design_lpf(Fp, Fs, Fn, att, &num_taps, -k, -1.);
 
@@ -335,7 +335,7 @@ static void rate_init(
     if (!mode && (!rational || !n))
       ++mode, n = 0;
   }
-
+  if (postL > 1) { preL *= postL; postL = 1; }
   p->num_stages = shift + have_pre_stage + have_arb_stage + have_post_stage;
   p->stages = calloc(p->num_stages + 1, sizeof(*p->stages));
   for (i = 0; i < p->num_stages; ++i)
@@ -445,12 +445,12 @@ static void rate_init(
         (double)max(postL, postM), att, phase, &post_stage, postL, postM);
 
   for (i = 0, s = p->stages; i < p->num_stages; ++i, ++s) {
-    fifo_create(&s->fifo, (int)sizeof(sample_t));
+    fifo_create(&s->fifo, sizeof(sample_t));
     memset(fifo_reserve(&s->fifo, s->preload), 0, sizeof(sample_t)*s->preload);
     lsx_debug("%5i|%-5i preload=%i remL=%i",
         s->pre, s->pre_post - s->pre, s->preload, s->remL);
   }
-  fifo_create(&s->fifo, (int)sizeof(sample_t));
+  fifo_create(&s->fifo, sizeof(sample_t));
 }
 
 static void rate_process(rate_t * p)
@@ -465,14 +465,14 @@ static void rate_process(rate_t * p)
 static sample_t * rate_input(rate_t * p, sample_t const * samples, size_t n)
 {
   p->samples_in += n;
-  return fifo_write(&p->stages[0].fifo, (int)n, samples);
+  return fifo_write(&p->stages[0].fifo, n, samples);
 }
 
 static sample_t const * rate_output(rate_t * p, sample_t * samples, size_t * n)
 {
   fifo_t * fifo = &p->stages[p->num_stages].fifo;
   p->samples_out += *n = min(*n, (size_t)fifo_occupancy(fifo));
-  return fifo_read(fifo, (int)*n, samples);
+  return fifo_read(fifo, *n, samples);
 }
 
 static void rate_flush(rate_t * p)
@@ -488,7 +488,7 @@ static void rate_flush(rate_t * p)
       rate_input(p, buff, (size_t) 1024);
       rate_process(p);
     }
-    fifo_trim_to(fifo, (int)remaining);
+    fifo_trim_to(fifo, remaining);
     p->samples_in = 0;
   }
   free(buff);
@@ -535,7 +535,7 @@ static int create(sox_effect_t * effp, int argc, char **argv)
   p->coef_interp = quality = -1;
   p->rolloff = rolloff_small;
   p->phase = 50;
-  p->max_coefs_size = LLONG_MAX;
+  p->max_coefs_size = INT_MAX;
   p->shared_ptr = &p->shared;
 
   while ((c = lsx_getopt(&optstate)) != -1) switch (c) {

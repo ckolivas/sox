@@ -86,7 +86,7 @@ double lsx_spline3(double const * x, double const * y, double const * y_2d,
     int n, double x1);
 
 double lsx_bessel_I_0(double x);
-int lsx_set_dft_length(int num_taps);
+long long int lsx_set_dft_length(int num_taps);
 void init_fft_cache(void);
 void clear_fft_cache(void);
 #define lsx_is_power_of_2(x) !(x < 2 || (x & (x - 1)))
@@ -114,7 +114,7 @@ double * lsx_design_lpf(
     int * num_taps, /* 0: value will be estimated */
     int k,          /* >0: number of phases; <0: num_taps ≡ 1 (mod -k) */
     double beta);   /* <0: value will be estimated */
-void lsx_fir_to_phase(double * * h, int * len,
+void lsx_fir_to_phase(double * * h, long long int * len,
     int * post_len, double phase0);
 void lsx_plot_fir(double * h, int num_points, sox_rate_t rate, sox_plot_t type, char const * title, double y1, double y2);
 void lsx_save_samples(sox_sample_t * const dest, double const * const src,

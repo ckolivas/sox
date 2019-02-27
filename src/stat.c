@@ -271,7 +271,7 @@ static int sox_stat_stop(sox_effect_t * effp)
     fprintf(stderr, "Scaled by rms:     %12.6f\n", rms);
   else
     fprintf(stderr, "Scaled by:         %12.1f\n", scale);
-  fprintf(stderr, "Maximum amplitude: %12.6f\n", stat->max);
+  fprintf(stderr, "Maximum amplitude: %12.16f\n", stat->max);
   fprintf(stderr, "Minimum amplitude: %12.6f\n", stat->min);
   fprintf(stderr, "Midline amplitude: %12.6f\n", stat->mid);
   fprintf(stderr, "Mean    norm:      %12.6f\n", stat->asum/ct);

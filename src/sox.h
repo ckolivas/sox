@@ -2485,6 +2485,7 @@ lsx_sigfigs3p(
     double percentage /**< Number to be formatted. */
     );
 
+#if 0
 /**
 Plugins API:
 Allocates, deallocates, or resizes; like C's realloc, except that this version
@@ -2498,6 +2499,7 @@ lsx_realloc(
     LSX_PARAM_IN_OPT void *ptr, /**< Pointer to be freed or resized, or null if allocating a new buffer. */
     size_t newsize /**< New size for buffer, or 0 to free the buffer. */
     );
+#endif
 
 /**
 Plugins API:

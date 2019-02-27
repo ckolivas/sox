@@ -39,7 +39,7 @@ UNUSED static void fifo_clear(fifo_t * f)
   f->end = f->begin = 0;
 }
 
-UNUSED static void * fifo_reserve(fifo_t * f, FIFO_SIZE_T n)
+UNUSED static void * _fifo_reserve(fifo_t * f, FIFO_SIZE_T n, const char *file, const char *func, const int line)
 {
   n *= f->item_size;
 
@@ -60,9 +60,11 @@ UNUSED static void * fifo_reserve(fifo_t * f, FIFO_SIZE_T n)
       continue;
     }
     f->allocation += n;
-    f->data = lsx_realloc(f->data, f->allocation);
+    f->data = _lsx_realloc(f->data, f->allocation, file, func, line);
   }
 }
+
+#define fifo_reserve(F, N) _fifo_reserve((F), (N), __FILE__, __func__, __LINE__)
 
 UNUSED static void * fifo_write(fifo_t * f, FIFO_SIZE_T n, void const * data)
 {

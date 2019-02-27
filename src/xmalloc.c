@@ -27,7 +27,7 @@
  * behavior is as if the size were some nonzero value, except that the
  * returned pointer shall not be used to access an object'
  */
-void *lsx_realloc(void *ptr, size_t newsize)
+void *__lsx_realloc(void *ptr, size_t newsize, const char *file, const char *func, const int line)
 {
   if (ptr && newsize == 0) {
     free(ptr);
@@ -35,7 +35,7 @@ void *lsx_realloc(void *ptr, size_t newsize)
   }
 
   if ((ptr = realloc(ptr, newsize)) == NULL) {
-    lsx_fail("out of memory, newsize was %lu", newsize);
+    lsx_fail("out of memory, newsize was %lu from %s %s:%d", newsize, file, func, line);
     exit(2);
   }
 
