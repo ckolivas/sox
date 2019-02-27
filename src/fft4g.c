@@ -283,6 +283,7 @@ Appendix :
 
 
 #include <math.h>
+#include "sox_i.h"
 #include "fft4g.h"
 
 #ifdef FFT4G_FLOAT
@@ -311,7 +312,7 @@ static void bitrv2(int n, int *ip, double *a);
 static void cft1st(int n, double *a, double const *w);
 static void cftbsub(int n, double *a, double const *w);
 static void cftfsub(int n, double *a, double const *w);
-static void cftmdl(int n, int l, double *a, double const *w);
+static void cftmdl(int n, long long int l, double *a, double const *w);
 static void dctsub(int n, double *a, int nc, double const *c);
 static void dstsub(int n, double *a, int nc, double const *c);
 static void makect(int nc, int *ip, double *c);
@@ -705,19 +706,30 @@ static void makect(int nc, int *ip, double *c)
 
 /* -------- child routines -------- */
 
+#define ipscale(MAXSIZE) do { \
+	while (sizeof(int) * (MAXSIZE) >= ipsize) { \
+		ipsize <<= 1; \
+		ip = lsx_realloc(ip, ipsize); \
+	} \
+} while (0);
+
+
 
 static void bitrv2(int n, int *ip0, double *a)
 {
-    int j, j1, k, k1, l, m, m2, ip[1024];
+    int j, j1, k, k1, l, m, m2, *ip = NULL;
+    size_t ipsize = sizeof(int) * 256;
     double xr, xi, yr, yi;
-    
+
     (void)ip0;
+    ip = lsx_malloc(ipsize);
     ip[0] = 0;
     l = n;
     m = 1;
     while ((m << 3) < l) {
         l >>= 1;
         for (j = 0; j < m; j++) {
+	    ipscale(m + j);
             ip[m + j] = ip[j] + l;
         }
         m <<= 1;
@@ -804,21 +816,25 @@ static void bitrv2(int n, int *ip0, double *a)
             }
         }
     }
+    free(ip);
 }
 
 
 static void bitrv2conj(int n, int *ip0, double *a)
 {
-    int j, j1, k, k1, l, m, m2, ip[1024];
+    int j, j1, k, k1, l, m, m2, *ip = NULL;
+    size_t ipsize = sizeof(int) * 256;
     double xr, xi, yr, yi;
     
     (void)ip0;
+    ip = lsx_malloc(ipsize);
     ip[0] = 0;
     l = n;
     m = 1;
     while ((m << 3) < l) {
         l >>= 1;
         for (j = 0; j < m; j++) {
+            ipscale(m + j);
             ip[m + j] = ip[j] + l;
         }
         m <<= 1;
@@ -914,12 +930,13 @@ static void bitrv2conj(int n, int *ip0, double *a)
             a[k1 + m2 + 1] = -a[k1 + m2 + 1];
         }
     }
+    free(ip);
 }
 
 
 static void cftfsub(int n, double *a, double const *w)
 {
-    int j, j1, j2, j3, l;
+    long long int j, j1, j2, j3, l;
     double x0r, x0i, x1r, x1i, x2r, x2i, x3r, x3i;
     
     l = 2;
@@ -969,7 +986,7 @@ static void cftfsub(int n, double *a, double const *w)
 
 static void cftbsub(int n, double *a, double const *w)
 {
-    int j, j1, j2, j3, l;
+    long long int j, j1, j2, j3, l;
     double x0r, x0i, x1r, x1i, x2r, x2i, x3r, x3i;
     
     l = 2;
@@ -1122,9 +1139,9 @@ static void cft1st(int n, double *a, double const *w)
 }
 
 
-static void cftmdl(int n, int l, double *a, double const *w)
+static void cftmdl(int n, long long int l, double *a, double const *w)
 {
-    int j, j1, j2, j3, k, k1, k2, m, m2;
+    long long int j, j1, j2, j3, k, k1, k2, m, m2;
     double wk1r, wk1i, wk2r, wk2i, wk3r, wk3i;
     double x0r, x0i, x1r, x1i, x2r, x2i, x3r, x3i;
     

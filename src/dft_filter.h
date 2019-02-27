@@ -1,5 +1,5 @@
 #include "fft4g.h"
-#define  FIFO_SIZE_T int
+#define  FIFO_SIZE_T size_t
 #include "fifo.h"
 
 typedef struct {

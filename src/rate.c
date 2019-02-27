@@ -236,9 +236,9 @@ static void dft_stage_init(
     free(h);
     f->num_taps = num_taps;
     f->dft_length = dft_length;
-    lsx_safe_rdft(dft_length, 1, f->coefs);
-    lsx_debug("fir_len=%i dft_length=%i Fp=%g Fs=%g Fn=%g att=%g %i/%i",
+    lsx_debug("fir_len=%i dft_length=%i Fp=%.16g Fs=%.16g Fn=%g att=%g %i/%i",
         num_taps, dft_length, Fp, Fs, Fn, att, L, M);
+    lsx_safe_rdft(dft_length, 1, f->coefs);
   }
   stage->fn = dft_stage_fn;
   stage->preload = f->post_peak / L;
@@ -288,7 +288,7 @@ static void rate_init(
   /* Primarily for test/development purposes:                                 */
   sox_bool use_hi_prec_clock,/* Increase irrational ratio accuracy.   false   */
   int interpolator,          /* Force a particular coef interpolator.   -1    */
-  int max_coefs_size,        /* k bytes of coefs to try to keep below.  400   */
+  long long int max_coefs_size,        /* k bytes of coefs to try to keep below.  400   */
   sox_bool noSmallIntOpt)    /* Disable small integer optimisations.  false   */
 {
   double att = (bits + 1) * linear_to_dB(2.), attArb = att;    /* pass + stop */
@@ -512,7 +512,8 @@ static void rate_close(rate_t * p)
 
 typedef struct {
   sox_rate_t      out_rate;
-  int             rolloff, coef_interp, max_coefs_size;
+  long long int	max_coefs_size;
+  int             rolloff, coef_interp;
   double          bit_depth, phase, bw_0dB_pc, anti_aliasing_pc;
   sox_bool        use_hi_prec_clock, noIOpt, given_0dB_pt;
   rate_t          rate;
@@ -534,17 +535,17 @@ static int create(sox_effect_t * effp, int argc, char **argv)
   p->coef_interp = quality = -1;
   p->rolloff = rolloff_small;
   p->phase = 50;
-  p->max_coefs_size = INT_MAX;
+  p->max_coefs_size = LLONG_MAX;
   p->shared_ptr = &p->shared;
 
   while ((c = lsx_getopt(&optstate)) != -1) switch (c) {
     GETOPT_NUMERIC(optstate, 'i', coef_interp, -1, 2)
-    GETOPT_NUMERIC(optstate, 'c', max_coefs_size, 100, INT_MAX)
+    GETOPT_NUMERIC(optstate, 'c', max_coefs_size, 100, LLONG_MAX)
     GETOPT_NUMERIC(optstate, 'p', phase, 0, 100)
-    GETOPT_NUMERIC(optstate, 'B', bw_0dB_pc, 53, 99.5)
+    GETOPT_NUMERIC(optstate, 'B', bw_0dB_pc, 53, 99.999995)
     GETOPT_NUMERIC(optstate, 'A', anti_aliasing_pc, 85, 100)
     GETOPT_NUMERIC(optstate, 'd', bit_depth, 15, 33)
-    GETOPT_LOCAL_NUMERIC(optstate, 'b', bw_3dB_pc, 74, 99.999)
+    GETOPT_LOCAL_NUMERIC(optstate, 'b', bw_3dB_pc, 74, 99.999999)
     GETOPT_LOCAL_NUMERIC(optstate, 'R', rej, 90, 200)
     GETOPT_LOCAL_NUMERIC(optstate, 'Q', quality, 0, 7)
     case 'M': p->phase =  0; break;
