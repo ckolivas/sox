@@ -415,7 +415,7 @@ static double safe_log(double x)
   return -26;
 }
 
-void lsx_fir_to_phase(double * * h, long long int * len, int * post_len, double phase)
+void lsx_fir_to_phase(double * * h, int * len, int * post_len, double phase)
 {
   double * pi_wraps, * work, phase1 = (phase > 50 ? 100 - phase : phase) / 50;
   int i, work_len, begin, end, imp_peak = 0, peak = 0;

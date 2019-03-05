@@ -119,7 +119,7 @@ typedef struct stage {
   int        n, phase_bits;
 } stage_t;
 
-#define stage_occupancy(s) max(0, fifo_occupancy(&(s)->fifo) - (s)->pre_post)
+#define stage_occupancy(s) max((long long int)0, (long long int)(fifo_occupancy(&(s)->fifo) - (s)->pre_post))
 #define stage_read_p(s) ((sample_t *)fifo_read_ptr(&(s)->fifo) + (s)->pre)
 
 static void cubic_stage_fn(stage_t * p, fifo_t * output_fifo)
@@ -220,7 +220,7 @@ static void dft_stage_init(
   dft_filter_t * f = &stage->shared->dft_filter[instance];
   
   if (!f->num_taps) {
-    long long int num_taps = 0, dft_length, i;
+    int num_taps = 0, dft_length, i;
     int k = phase == 50 && lsx_is_power_of_2(L) && Fn == L? L << 1 : 4;
     double * h = lsx_design_lpf(Fp, Fs, Fn, att, &num_taps, -k, -1.);
 

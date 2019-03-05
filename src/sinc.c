@@ -43,13 +43,13 @@ static int create(sox_effect_t * effp, int argc, char * * argv)
     while (c && (c = lsx_getopt(&optstate)) != -1) switch (c) {
       char * parse_ptr2;
       case 'r': p->round = sox_true; break;
-      GETOPT_NUMERIC(optstate, 'a', att,  40 , 180)
+      GETOPT_NUMERIC(optstate, 'a', att,  40 , 200)
       GETOPT_NUMERIC(optstate, 'b', beta,  0 , 256)
       GETOPT_NUMERIC(optstate, 'p', phase, 0, 100)
       case 'M': p->phase =  0; break;
       case 'I': p->phase = 25; break;
       case 'L': p->phase = 50; break;
-      GETOPT_NUMERIC(optstate, 'n', num_taps[1], 11, 32767)
+      GETOPT_NUMERIC(optstate, 'n', num_taps[1], 11, 1073741824)
       case 't': p->tbw1 = lsx_parse_frequency(optstate.arg, &parse_ptr2);
         if (p->tbw1 < 1 || *parse_ptr2) return lsx_usage(effp);
         break;
@@ -89,7 +89,7 @@ static double * lpf(double Fn, double Fc, double tbw, int * num_taps, double att
   lsx_kaiser_params(att, Fc, (tbw? tbw / Fn : .05) * .5, beta, num_taps);
   if (!n) {
     n = *num_taps;
-    *num_taps = range_limit(n, 11, 32767);
+    *num_taps = range_limit(n, 11, 1073741824);
     if (round)
       *num_taps = 1 + 2 * (int)((int)((*num_taps / 2) * Fc + .5) / Fc + .5);
     lsx_report("num taps = %i (from %i)", *num_taps, n);
