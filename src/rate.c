@@ -301,7 +301,8 @@ static void rate_init(
   stage_t * s;
 
   assert(factor > 0);
-  assert(!bits || (15 <= bits && bits <= 33));
+  lsx_debug("Bits %lf", bits);
+  assert(!bits || (15 <= bits && bits <= 64));
   assert(0 <= phase && phase <= 100);
   assert(53 <= bw_pc && bw_pc <= 100);
   assert(85 <= anti_aliasing_pc && anti_aliasing_pc <= 100);
@@ -544,9 +545,9 @@ static int create(sox_effect_t * effp, int argc, char **argv)
     GETOPT_NUMERIC(optstate, 'p', phase, 0, 100)
     GETOPT_NUMERIC(optstate, 'B', bw_0dB_pc, 53, 99.999995)
     GETOPT_NUMERIC(optstate, 'A', anti_aliasing_pc, 85, 100)
-    GETOPT_NUMERIC(optstate, 'd', bit_depth, 15, 33)
+    GETOPT_NUMERIC(optstate, 'd', bit_depth, 15, 64)
     GETOPT_LOCAL_NUMERIC(optstate, 'b', bw_3dB_pc, 74, 99.999999)
-    GETOPT_LOCAL_NUMERIC(optstate, 'R', rej, 90, 200)
+    GETOPT_LOCAL_NUMERIC(optstate, 'R', rej, 90, 400)
     GETOPT_LOCAL_NUMERIC(optstate, 'Q', quality, 0, 7)
     case 'M': p->phase =  0; break;
     case 'I': p->phase = 25; break;

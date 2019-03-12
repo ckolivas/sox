@@ -19,7 +19,7 @@
 #include <alsa/asoundlib.h>
 
 typedef struct {
-  snd_pcm_uframes_t  buf_len, period;
+  snd_pcm_uframes_t  buf_len, period, min_buf;
   snd_pcm_t          * pcm;
   char               * buf;
   unsigned int       format;
@@ -144,6 +144,8 @@ static int setup(sox_format_t * ft)
   _(snd_pcm_hw_params_get_buffer_size_max, (params, &max));
   p->period = range_limit(p->buf_len, min, max) / 8;
   p->buf_len = p->period * 8;
+  p->min_buf = max;
+  lsx_debug("pcm buffer size min %lu max %lu period %lu len %lu", min,max, p->period, p->buf_len);
   _(snd_pcm_hw_params_set_period_size_near, (p->pcm, params, &p->period, 0));
   _(snd_pcm_hw_params_set_buffer_size_near, (p->pcm, params, &p->buf_len));
   if (p->period * 2 > p->buf_len) {
@@ -174,7 +176,7 @@ static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
     lsx_report("suspended");
     sleep(1);                  /* Wait until the suspend flag is released */
   }
-  if (err < 0 && (err = snd_pcm_prepare(pcm)) < 0)
+  if (err < 0 && (err = snd_pcm_recover(pcm, err, 0)) < 0)
     lsx_fail_errno(ft, SOX_EPERM, "%s", snd_strerror(err));
   return err;
 }
@@ -329,11 +331,11 @@ static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
         return 0;
     }
     for (i = 0; i < n; i += actual * ft->signal.channels) do {
-      actual = snd_pcm_writei(p->pcm,
-          p->buf + i * formats[p->format].bytes,
-          (n - i) / ft->signal.channels);
-      if (errno == EAGAIN)     /* Happens naturally; don't report it: */
-        errno = 0;
+	do {
+	      actual = snd_pcm_writei(p->pcm,
+	          p->buf + i * formats[p->format].bytes,
+	          (n - i) / ft->signal.channels);
+	} while (actual == -EAGAIN);
       if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
         return 0;
     } while (actual < 0);
