@@ -133,7 +133,7 @@ static sox_globals_t s_sox_globals = {
   NULL,            /* char const * subsystem */
   NULL,            /* char       * tmp_path */
   sox_false,       /* sox_bool     use_magic */
-  sox_true,       /* sox_bool     use_threads */
+  sox_false,       /* sox_bool     use_threads */
   10               /* size_t       log2_dft_min_size */
 };
 

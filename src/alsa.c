@@ -17,12 +17,19 @@
 
 #include "sox_i.h"
 #include <alsa/asoundlib.h>
+#include <pthread.h>
+#include <semaphore.h>
 
 typedef struct {
-  snd_pcm_uframes_t  buf_len, period, min_buf;
+  snd_pcm_uframes_t  buf_len, period, read_len, write_len;
   snd_pcm_t          * pcm;
   char               * buf;
+  char               * thread_buf;
+  size_t	bufsize;
   unsigned int       format;
+  sem_t write_sem;
+  sem_t read_sem;
+  sem_t rread_sem;
 } priv_t;
 
 static const
@@ -144,7 +151,8 @@ static int setup(sox_format_t * ft)
   _(snd_pcm_hw_params_get_buffer_size_max, (params, &max));
   p->period = range_limit(p->buf_len, min, max) / 8;
   p->buf_len = p->period * 8;
-  p->min_buf = max;
+  p->write_len = 131072; //max;
+  p->read_len = 8192; //max;
   lsx_debug("pcm buffer size min %lu max %lu period %lu len %lu", min,max, p->period, p->buf_len);
   _(snd_pcm_hw_params_set_period_size_near, (p->pcm, params, &p->period, 0));
   _(snd_pcm_hw_params_set_buffer_size_near, (p->pcm, params, &p->buf_len));
@@ -157,7 +165,13 @@ static int setup(sox_format_t * ft)
   snd_pcm_hw_params_free(params), params = NULL;
   _(snd_pcm_prepare, (p->pcm));
   p->buf_len *= ft->signal.channels;                /* No longer in `frames' */
-  p->buf = lsx_malloc(p->buf_len * formats[p->format].bytes);
+  p->bufsize = p->buf_len * formats[p->format].bytes;
+  p->buf = lsx_malloc(p->bufsize);
+  p->thread_buf = lsx_malloc(p->bufsize);
+  sem_init(&p->write_sem, 0, 0);
+  sem_post(&p->write_sem);
+  sem_init(&p->read_sem, 0, 0);
+  sem_init(&p->rread_sem, 0, 0);
   return SOX_SUCCESS;
 
 error:
@@ -261,12 +275,43 @@ static size_t read_(sox_format_t * ft, sox_sample_t * buf, size_t len)
   return len;
 }
 
+typedef struct {
+	size_t n;
+	sox_format_t * ft;
+} thread_priv_t;
+
+
+static void *write_thread(void *arg)
+{
+	thread_priv_t *tpt = arg;
+	sox_format_t * ft = tpt->ft;
+	priv_t *p = (priv_t *)tpt->ft->priv;
+	snd_pcm_sframes_t  actual;
+	size_t i, n = tpt->n;
+
+	pthread_detach(pthread_self());
+	for (i = 0; i < n; i += actual * ft->signal.channels) do {
+		do {
+			actual = snd_pcm_writei(p->pcm,
+						p->thread_buf + i * formats[p->format].bytes,
+			   (n - i) / ft->signal.channels);
+		} while (actual == -EAGAIN);
+		if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
+			return 0;
+	} while (actual < 0);
+	sem_post(&p->write_sem);
+
+	free(tpt);
+	return NULL;
+}
+
 static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
 {
   priv_t             * p = (priv_t *)ft->priv;
   size_t             done, i, n;
-  snd_pcm_sframes_t  actual;
   SOX_SAMPLE_LOCALS;
+  pthread_t thread;
+  thread_priv_t *tft;
 
   for (done = 0; done < len; done += n) {
     i = n = min(len - done, p->buf_len);
@@ -330,15 +375,12 @@ static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
       default: lsx_fail_errno(ft, SOX_EFMT, "invalid format");
         return 0;
     }
-    for (i = 0; i < n; i += actual * ft->signal.channels) do {
-	do {
-	      actual = snd_pcm_writei(p->pcm,
-	          p->buf + i * formats[p->format].bytes,
-	          (n - i) / ft->signal.channels);
-	} while (actual == -EAGAIN);
-      if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
-        return 0;
-    } while (actual < 0);
+    tft = lsx_malloc(sizeof(thread_priv_t));
+    tft->n = n;
+    tft->ft = ft;
+    sem_wait(&p->write_sem);
+    memcpy(p->thread_buf, p->buf, p->bufsize);
+    pthread_create(&thread, NULL, write_thread, tft);
   }
   return len;
 }
