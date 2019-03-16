@@ -28,6 +28,7 @@ typedef struct {
   size_t	bufsize;
   unsigned int       format;
   sem_t write_sem;
+  sem_t rwrite_sem;
   sem_t read_sem;
   sem_t rread_sem;
 } priv_t;
@@ -109,8 +110,7 @@ static int select_format(
 typedef struct {
 	sox_format_t * ft;
 	priv_t *p;
-	size_t len;
-} read_priv_t;
+} thread_priv_t;
 
 static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
 {
@@ -129,18 +129,16 @@ static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
 
 static void *read_thread(void *arg)
 {
-	read_priv_t *rpt = arg;
-	sox_format_t *ft = rpt->ft;
-	priv_t *p = rpt->p;
-	size_t len = rpt->len;
+	thread_priv_t *tpt = arg;
+	sox_format_t *ft = tpt->ft;
+	priv_t *p = tpt->p;
 	snd_pcm_sframes_t  n;
 
-	free(rpt);
 	sem_wait(&p->rread_sem);
 	while (42) {
-		len = p->read_len;
+		size_t len = p->read_len / ft->signal.channels;
 		do {
-			n = snd_pcm_readi(p->pcm, p->thread_buf, len / ft->signal.channels);
+			n = snd_pcm_readi(p->pcm, p->thread_buf, len);
 			if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
 				break;
 		} while (n <= 0);
@@ -148,6 +146,34 @@ static void *read_thread(void *arg)
 		sem_wait(&p->rread_sem);
 		memcpy(p->buf, p->thread_buf, p->bufsize);
 		sem_post(&p->read_sem);
+	}
+
+	return NULL;
+}
+
+static void *write_thread(void *arg)
+{
+	thread_priv_t *tpt = arg;
+	sox_format_t * ft = tpt->ft;
+	priv_t *p = (priv_t *)tpt->ft->priv;
+	snd_pcm_sframes_t  actual;
+	size_t i, n;
+
+	sem_post(&p->write_sem);
+	sem_wait(&p->rwrite_sem);
+	while (42) {
+		n = p->write_len;
+		for (i = 0; i < n; i += actual * ft->signal.channels) do {
+			do {
+				actual = snd_pcm_writei(p->pcm,
+							p->thread_buf + i * formats[p->format].bytes,
+				   (n - i) / ft->signal.channels);
+			} while (actual == -EAGAIN);
+			if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
+				return 0;
+		} while (actual < 0);
+		sem_post(&p->write_sem);
+		sem_wait(&p->rwrite_sem);
 	}
 
 	return NULL;
@@ -162,7 +188,7 @@ static int setup(sox_format_t * ft)
   snd_pcm_uframes_t      min, max;
   unsigned               n;
   int                    err;
-  read_priv_t *rpt;
+  thread_priv_t *tpt;
   static pthread_t thread;
 
   _(snd_pcm_open, (&p->pcm, ft->filename, ft->mode == 'r'? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK, 0));
@@ -216,13 +242,14 @@ static int setup(sox_format_t * ft)
   p->buf = lsx_malloc(p->bufsize);
   p->thread_buf = lsx_malloc(p->bufsize * 10);
   sem_init(&p->write_sem, 0, 0);
-  sem_post(&p->write_sem);
+  sem_init(&p->rwrite_sem, 0, 0);
   sem_init(&p->read_sem, 0, 0);
   sem_init(&p->rread_sem, 0, 0);
-	rpt = lsx_malloc(sizeof(read_priv_t));
-	rpt->ft = ft;
-	rpt->p = p;
-  pthread_create(&thread, NULL, read_thread, rpt);
+	tpt = lsx_malloc(sizeof(thread_priv_t));
+	tpt->ft = ft;
+	tpt->p = p;
+  pthread_create(&thread, NULL, read_thread, tpt);
+  pthread_create(&thread, NULL, write_thread, tpt);
   return SOX_SUCCESS;
 
 error:
@@ -316,42 +343,11 @@ static size_t read_(sox_format_t * ft, sox_sample_t * buf, size_t len)
     return len;
 }
 
-typedef struct {
-	size_t n;
-	sox_format_t * ft;
-} write_priv_t;
-
-static void *write_thread(void *arg)
-{
-	write_priv_t *tpt = arg;
-	sox_format_t * ft = tpt->ft;
-	priv_t *p = (priv_t *)tpt->ft->priv;
-	snd_pcm_sframes_t  actual;
-	size_t i, n = tpt->n;
-
-	pthread_detach(pthread_self());
-	for (i = 0; i < n; i += actual * ft->signal.channels) do {
-		do {
-			actual = snd_pcm_writei(p->pcm,
-						p->thread_buf + i * formats[p->format].bytes,
-			   (n - i) / ft->signal.channels);
-		} while (actual == -EAGAIN);
-		if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
-			return 0;
-	} while (actual < 0);
-	sem_post(&p->write_sem);
-
-	free(tpt);
-	return NULL;
-}
-
 static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
 {
   priv_t             * p = (priv_t *)ft->priv;
   size_t             done, i, n;
   SOX_SAMPLE_LOCALS;
-  pthread_t thread;
-  write_priv_t *tft;
 
   for (done = 0; done < len; done += n) {
     i = n = min(len - done, p->buf_len);
@@ -415,12 +411,10 @@ static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
       default: lsx_fail_errno(ft, SOX_EFMT, "invalid format");
         return 0;
     }
-    tft = lsx_malloc(sizeof(write_priv_t));
-    tft->n = n;
-    tft->ft = ft;
+    p->write_len = n;
     sem_wait(&p->write_sem);
     memcpy(p->thread_buf, p->buf, p->bufsize);
-    pthread_create(&thread, NULL, write_thread, tft);
+    sem_post(&p->rwrite_sem);
   }
   return len;
 }
