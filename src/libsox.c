@@ -125,7 +125,7 @@ static sox_globals_t s_sox_globals = {
   2,               /* unsigned     verbosity */
   output_message,  /* sox_output_message_handler */
   sox_false,       /* sox_bool     repeatable */
-  4194304,         /* size_t       bufsiz */
+  131072 ,         /* size_t       bufsiz */
   0,               /* size_t       input_bufsiz */
   0,               /* int32_t      ranqd1 */
   NULL,            /* char const * stdin_in_use_by */

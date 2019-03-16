@@ -106,6 +106,53 @@ static int select_format(
   return 0;
 }
 
+typedef struct {
+	sox_format_t * ft;
+	priv_t *p;
+	size_t len;
+} read_priv_t;
+
+static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
+{
+  if (err == -EPIPE)
+    lsx_warn("%s-run", ft->mode == 'r'? "over" : "under");
+  else if (err != -ESTRPIPE)
+    lsx_warn("%s", snd_strerror(err));
+  else while ((err = snd_pcm_resume(pcm)) == -EAGAIN) {
+    lsx_report("suspended");
+    sleep(1);                  /* Wait until the suspend flag is released */
+  }
+  if (err < 0 && (err = snd_pcm_recover(pcm, err, 0)) < 0)
+    lsx_fail_errno(ft, SOX_EPERM, "%s", snd_strerror(err));
+  return err;
+}
+
+static void *read_thread(void *arg)
+{
+	read_priv_t *rpt = arg;
+	sox_format_t *ft = rpt->ft;
+	priv_t *p = rpt->p;
+	size_t len = rpt->len;
+	snd_pcm_sframes_t  n;
+
+	free(rpt);
+	sem_wait(&p->rread_sem);
+	while (42) {
+		len = p->read_len;
+		do {
+			n = snd_pcm_readi(p->pcm, p->thread_buf, len / ft->signal.channels);
+			if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
+				break;
+		} while (n <= 0);
+
+		sem_wait(&p->rread_sem);
+		memcpy(p->buf, p->thread_buf, p->bufsize);
+		sem_post(&p->read_sem);
+	}
+
+	return NULL;
+}
+
 #define _(x,y) do {if ((err = x y) < 0) {lsx_fail_errno(ft, SOX_EPERM, #x " error: %s", snd_strerror(err)); goto error;} } while (0)
 static int setup(sox_format_t * ft)
 {
@@ -115,6 +162,8 @@ static int setup(sox_format_t * ft)
   snd_pcm_uframes_t      min, max;
   unsigned               n;
   int                    err;
+  read_priv_t *rpt;
+  static pthread_t thread;
 
   _(snd_pcm_open, (&p->pcm, ft->filename, ft->mode == 'r'? SND_PCM_STREAM_CAPTURE : SND_PCM_STREAM_PLAYBACK, 0));
   _(snd_pcm_hw_params_malloc, (&params));
@@ -151,8 +200,6 @@ static int setup(sox_format_t * ft)
   _(snd_pcm_hw_params_get_buffer_size_max, (params, &max));
   p->period = range_limit(p->buf_len, min, max) / 8;
   p->buf_len = p->period * 8;
-  p->write_len = 131072; //max;
-  p->read_len = 8192; //max;
   lsx_debug("pcm buffer size min %lu max %lu period %lu len %lu", min,max, p->period, p->buf_len);
   _(snd_pcm_hw_params_set_period_size_near, (p->pcm, params, &p->period, 0));
   _(snd_pcm_hw_params_set_buffer_size_near, (p->pcm, params, &p->buf_len));
@@ -167,11 +214,15 @@ static int setup(sox_format_t * ft)
   p->buf_len *= ft->signal.channels;                /* No longer in `frames' */
   p->bufsize = p->buf_len * formats[p->format].bytes;
   p->buf = lsx_malloc(p->bufsize);
-  p->thread_buf = lsx_malloc(p->bufsize);
+  p->thread_buf = lsx_malloc(p->bufsize * 10);
   sem_init(&p->write_sem, 0, 0);
   sem_post(&p->write_sem);
   sem_init(&p->read_sem, 0, 0);
   sem_init(&p->rread_sem, 0, 0);
+	rpt = lsx_malloc(sizeof(read_priv_t));
+	rpt->ft = ft;
+	rpt->p = p;
+  pthread_create(&thread, NULL, read_thread, rpt);
   return SOX_SUCCESS;
 
 error:
@@ -180,36 +231,25 @@ error:
   return SOX_EOF;
 }
 
-static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
-{
-  if (err == -EPIPE)
-    lsx_warn("%s-run", ft->mode == 'r'? "over" : "under");
-  else if (err != -ESTRPIPE)
-    lsx_warn("%s", snd_strerror(err));
-  else while ((err = snd_pcm_resume(pcm)) == -EAGAIN) {
-    lsx_report("suspended");
-    sleep(1);                  /* Wait until the suspend flag is released */
-  }
-  if (err < 0 && (err = snd_pcm_recover(pcm, err, 0)) < 0)
-    lsx_fail_errno(ft, SOX_EPERM, "%s", snd_strerror(err));
-  return err;
-}
-
 static size_t read_(sox_format_t * ft, sox_sample_t * buf, size_t len)
 {
   priv_t             * p = (priv_t *)ft->priv;
-  snd_pcm_sframes_t  i, n;
-  size_t             done;
+  snd_pcm_sframes_t  i;
+  static sox_bool first = sox_true;
 
   len = min(len, p->buf_len);
-  for (done = 0; done < len; done += n) {
-    do {
-      n = snd_pcm_readi(p->pcm, p->buf, (len - done) / ft->signal.channels);
-      if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
-        return 0;
-    } while (n <= 0);
+  if (first) {
+	  p->read_len = len;
+	  sem_post(&p->rread_sem);
+	  sem_post(&p->rread_sem);
+	  first = sox_false;
+  } else if (p->read_len != len) {
+	  lsx_warn("read len changed from %ld to %ld", p->read_len, len);
+	  p->read_len = len;
+  }
 
-    i = n *= ft->signal.channels;
+  sem_wait(&p->read_sem);
+  i = len;
     switch (formats[p->format].alsa_fmt) {
       case SND_PCM_FORMAT_S8: {
         int8_t * buf1 = (int8_t *)p->buf;
@@ -271,19 +311,19 @@ static size_t read_(sox_format_t * ft, sox_sample_t * buf, size_t len)
       default: lsx_fail_errno(ft, SOX_EFMT, "invalid format");
         return 0;
     }
-  }
-  return len;
+    sem_post(&p->rread_sem);
+
+    return len;
 }
 
 typedef struct {
 	size_t n;
 	sox_format_t * ft;
-} thread_priv_t;
-
+} write_priv_t;
 
 static void *write_thread(void *arg)
 {
-	thread_priv_t *tpt = arg;
+	write_priv_t *tpt = arg;
 	sox_format_t * ft = tpt->ft;
 	priv_t *p = (priv_t *)tpt->ft->priv;
 	snd_pcm_sframes_t  actual;
@@ -311,7 +351,7 @@ static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
   size_t             done, i, n;
   SOX_SAMPLE_LOCALS;
   pthread_t thread;
-  thread_priv_t *tft;
+  write_priv_t *tft;
 
   for (done = 0; done < len; done += n) {
     i = n = min(len - done, p->buf_len);
@@ -375,7 +415,7 @@ static size_t write_(sox_format_t * ft, sox_sample_t const * buf, size_t len)
       default: lsx_fail_errno(ft, SOX_EFMT, "invalid format");
         return 0;
     }
-    tft = lsx_malloc(sizeof(thread_priv_t));
+    tft = lsx_malloc(sizeof(write_priv_t));
     tft->n = n;
     tft->ft = ft;
     sem_wait(&p->write_sem);
