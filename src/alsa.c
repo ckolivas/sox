@@ -25,7 +25,7 @@ typedef struct {
   snd_pcm_t          * pcm;
   char               * buf;
   char               * thread_buf;
-  size_t	bufsize;
+  size_t	bufsize, tbufsize, frame_bytes, min, max;
   unsigned int       format;
   sem_t write_sem;
   sem_t rwrite_sem;
@@ -127,25 +127,42 @@ static int recover(sox_format_t * ft, snd_pcm_t * pcm, int err)
   return err;
 }
 
+#include <sys/time.h>
 static void *read_thread(void *arg)
 {
 	thread_priv_t *tpt = arg;
 	sox_format_t *ft = tpt->ft;
 	priv_t *p = tpt->p;
-	snd_pcm_sframes_t  n;
+	snd_pcm_sframes_t  n, total;
+	size_t offset = 0, shifted;
 
+	snd_pcm_nonblock(p->pcm, 1);
 	sem_wait(&p->rread_sem);
 	while (42) {
-		size_t len = p->read_len / ft->signal.channels;
-		do {
-			n = snd_pcm_readi(p->pcm, p->thread_buf, len);
-			if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
-				break;
-		} while (n <= 0);
+		snd_pcm_sframes_t len = p->read_len;
 
-		sem_wait(&p->rread_sem);
-		memcpy(p->buf, p->thread_buf, p->bufsize);
+		total = offset / formats[p->format].bytes;
+		while (total < len || sem_trywait(&p->rread_sem)) {
+			if (offset + p->max >= p->tbufsize) {
+				lsx_report("Input buffer full!");
+				sem_wait(&p->rread_sem);
+				break;
+			}
+			do {
+				do {
+					n = snd_pcm_readi(p->pcm, p->thread_buf + offset, p->max / ft->signal.channels);
+				} while (n == -EAGAIN);
+				if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
+					break;
+			} while (n <= 0);
+			total += n * ft->signal.channels;
+			offset += n * p->frame_bytes;
+		}
+		shifted = len * formats[p->format].bytes;
+		memcpy(p->buf, p->thread_buf, shifted);
 		sem_post(&p->read_sem);
+		offset -= shifted;
+		memmove(p->thread_buf, p->thread_buf + shifted, offset);
 	}
 
 	return NULL;
@@ -239,8 +256,12 @@ static int setup(sox_format_t * ft)
   _(snd_pcm_prepare, (p->pcm));
   p->buf_len *= ft->signal.channels;                /* No longer in `frames' */
   p->bufsize = p->buf_len * formats[p->format].bytes;
+  p->tbufsize = p->bufsize * 10;
+  p->frame_bytes = ft->signal.channels * formats[p->format].bytes;
+  p->min = min;
+  p->max = max;
   p->buf = lsx_malloc(p->bufsize);
-  p->thread_buf = lsx_malloc(p->bufsize * 10);
+  p->thread_buf = lsx_malloc(p->tbufsize);
   sem_init(&p->write_sem, 0, 0);
   sem_init(&p->rwrite_sem, 0, 0);
   sem_init(&p->read_sem, 0, 0);
