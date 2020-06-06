@@ -59,7 +59,7 @@ UNUSED static void * _fifo_reserve(fifo_t * f, FIFO_SIZE_T n, const char *file, 
       f->begin = 0;
       continue;
     }
-    f->allocation += n;
+    f->allocation += n * 3; // Allocate extra to avoid further reallocs
     f->data = _lsx_realloc(f->data, f->allocation, file, func, line);
   }
 }

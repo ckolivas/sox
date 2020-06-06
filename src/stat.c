@@ -286,7 +286,7 @@ static int sox_stat_stop(sox_effect_t * effp)
   fprintf(stderr, "Rough   frequency: %12d\n", (int)freq);
 
   if (amp>0)
-    fprintf(stderr, "Volume adjustment: %12.3f\n", SOX_SAMPLE_MAX/(amp*scale));
+    fprintf(stderr, "Volume adjustment: %12.16f\n", SOX_SAMPLE_MAX/(amp*scale));
 
   if (stat->bin[2] == 0 && stat->bin[3] == 0)
     fprintf(stderr, "\nProbably text, not sound\n");

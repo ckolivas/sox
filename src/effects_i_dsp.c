@@ -152,7 +152,8 @@ long long int lsx_set_dft_length(int num_taps) /* Set to 4 x nearest power of 2 
 {      /* or half of that if danger of causing too many cache misses. */
   int min = sox_globals.log2_dft_min_size;
   double d = log((double)num_taps) / log(2.);
-  return 1 << range_limit((int)(d + 2.77), min, max((int)(d + 1.77), 17));
+  return 1 << ((int)d + 1); //Making this too big just slows everything down
+  //return 1 << range_limit((int)(d + 2.77), min, max((int)(d + 1.77), 17));
 }
 
 #include "fft4g.h"

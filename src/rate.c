@@ -600,10 +600,12 @@ static int create(sox_effect_t * effp, int argc, char **argv)
     lsx_fail("minimum allowed bandwidth with aliasing is %g%%", 74.);
     return SOX_EOF;
   }
-  if (bw_3dB_pc)
+  if (bw_3dB_pc) {
     p->bw_0dB_pc = 100 - (100 - bw_3dB_pc) / TO_3dB(rej);
-  else {
+    lsx_debug("0dB set to %lf", p->bw_0dB_pc);
+  } else {
     bw_3dB_pc = 100 - (100 - p->bw_0dB_pc) * TO_3dB(rej);
+    lsx_debug("3dB set to %lf", bw_3dB_pc);
     p->given_0dB_pt = sox_true;
   }
   p->anti_aliasing_pc = p->anti_aliasing_pc? p->anti_aliasing_pc :
