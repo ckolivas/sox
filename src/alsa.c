@@ -24,7 +24,7 @@ typedef struct {
   snd_pcm_uframes_t  buf_len, period, read_len, write_len;
   snd_pcm_t          * pcm;
   char               * buf;
-  char               * thread_buf;
+  char               * thread_buf, * double_buf;
   size_t	bufsize, tbufsize, frame_bytes, min, max;
   unsigned int       format;
   sem_t write_sem;
@@ -136,7 +136,7 @@ static void *read_thread(void *arg)
 	snd_pcm_sframes_t  n, total;
 	size_t offset = 0, shifted;
 
-	snd_pcm_nonblock(p->pcm, 1);
+	snd_pcm_nonblock(p->pcm, 0);
 	sem_wait(&p->rread_sem);
 	while (42) {
 		snd_pcm_sframes_t len = p->read_len;
@@ -149,9 +149,7 @@ static void *read_thread(void *arg)
 				break;
 			}
 			do {
-				do {
-					n = snd_pcm_readi(p->pcm, p->thread_buf + offset, p->max / ft->signal.channels);
-				} while (n == -EAGAIN);
+				n = snd_pcm_readi(p->pcm, p->thread_buf + offset, p->max / ft->signal.channels);
 				if (n < 0 && recover(ft, p->pcm, (int)n) < 0)
 					break;
 			} while (n <= 0);
@@ -174,22 +172,28 @@ static void *write_thread(void *arg)
 	sox_format_t * ft = tpt->ft;
 	priv_t *p = (priv_t *)tpt->ft->priv;
 	snd_pcm_sframes_t  actual;
+	char *buf;
 	size_t i, n;
 
 	sem_post(&p->write_sem);
 	sem_wait(&p->rwrite_sem);
 	while (42) {
+		buf = p->thread_buf;
+		p->thread_buf = p->double_buf;
+		p->double_buf = buf;
 		n = p->write_len;
+		sem_post(&p->write_sem);
 		for (i = 0; i < n; i += actual * ft->signal.channels) do {
 			do {
-				actual = snd_pcm_writei(p->pcm,
-							p->thread_buf + i * formats[p->format].bytes,
+				actual = snd_pcm_writei(p->pcm, buf + i * formats[p->format].bytes,
 				   (n - i) / ft->signal.channels);
 			} while (actual == -EAGAIN);
-			if (actual < 0 && recover(ft, p->pcm, (int)actual) < 0)
-				return 0;
-		} while (actual < 0);
-		sem_post(&p->write_sem);
+			if (actual < 0) {
+				if (recover(ft, p->pcm, (int)actual) < 0)
+					return 0;
+				actual = 0;
+			}
+		} while (actual == 0);
 		sem_wait(&p->rwrite_sem);
 	}
 
@@ -239,6 +243,8 @@ static int setup(sox_format_t * ft)
   /* Set buf_len > > sox_globals.bufsiz for no underrun: */
   p->buf_len = sox_globals.bufsiz * 8 / formats[p->format].bytes /
       ft->signal.channels;
+      if (p->buf_len < 262144)
+	      p->buf_len = 262144;
   _(snd_pcm_hw_params_get_buffer_size_min, (params, &min));
   _(snd_pcm_hw_params_get_buffer_size_max, (params, &max));
   p->period = range_limit(p->buf_len, min, max) / 8;
@@ -262,6 +268,7 @@ static int setup(sox_format_t * ft)
   p->max = max;
   p->buf = lsx_malloc(p->bufsize);
   p->thread_buf = lsx_malloc(p->tbufsize);
+  p->double_buf = lsx_malloc(p->tbufsize);
   sem_init(&p->write_sem, 0, 0);
   sem_init(&p->rwrite_sem, 0, 0);
   sem_init(&p->read_sem, 0, 0);

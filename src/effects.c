@@ -237,6 +237,14 @@ static void interleave(size_t flows, size_t length, sox_sample_t *from,
 static void deinterleave(size_t flows, size_t length, sox_sample_t *from,
     sox_sample_t *to, size_t bufsiz, size_t offset);
 
+#include <time.h>
+
+#define TIMEDUMP { \
+	struct timespec now; \
+	clock_gettime(CLOCK_MONOTONIC, &now); \
+	printf("\n%ld : %ld %s %s:%d\n", now.tv_sec, now.tv_nsec, __FILE__, __func__, __LINE__); \
+}
+
 static int flow_effect(sox_effects_chain_t * chain, size_t n)
 {
   sox_effect_t *effp1 = chain->effects[n - 1];
