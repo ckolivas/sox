@@ -26,6 +26,7 @@
   FORMAT(cvsd)
   FORMAT(cvu)
   FORMAT(dat)
+  FORMAT(dsf)
   FORMAT(dvms)
   FORMAT(f4)
   FORMAT(f8)
